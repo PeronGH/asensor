@@ -29,12 +29,10 @@ func main() {
 }
 
 func list(args []string) error {
-	fs := flag.NewFlagSet("list", flag.ContinueOnError)
+	fs := flag.NewFlagSet("list", flag.ExitOnError)
 	fs.SetOutput(os.Stderr)
 	verbose := fs.Bool("verbose", false, "show full details for each sensor")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
+	fs.Parse(args)
 
 	manager, err := sensor.GetInstance()
 	if err != nil {
