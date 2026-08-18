@@ -124,6 +124,33 @@ func (t Type) String() string {
 	}
 }
 
+// ReportingMode is a sensor's reporting mode as returned by ASensor_getReportingMode.
+type ReportingMode int32
+
+const (
+	ReportingInvalid        ReportingMode = -1
+	ReportingContinuous     ReportingMode = 0
+	ReportingOnChange       ReportingMode = 1
+	ReportingOneShot        ReportingMode = 2
+	ReportingSpecialTrigger ReportingMode = 3
+)
+
+// String returns the Android name of the reporting mode.
+func (m ReportingMode) String() string {
+	switch m {
+	case ReportingContinuous:
+		return "continuous"
+	case ReportingOnChange:
+		return "on-change"
+	case ReportingOneShot:
+		return "one-shot"
+	case ReportingSpecialTrigger:
+		return "special-trigger"
+	default:
+		return fmt.Sprintf("ReportingMode(%d)", int(m))
+	}
+}
+
 // Manager wraps a native ASensorManager handle.
 type Manager struct {
 	ptr uintptr
@@ -172,11 +199,29 @@ func (s *Sensor) Vendor() string { return fnGetVendor(s.ptr) }
 // Type returns the sensor's type.
 func (s *Sensor) Type() Type { return Type(fnGetType(s.ptr)) }
 
+// StringType returns the sensor's Android string type (e.g. android.sensor.accelerometer).
+func (s *Sensor) StringType() string { return fnGetStringType(s.ptr) }
+
 // MinDelay returns the minimum delay between events in microseconds.
 func (s *Sensor) MinDelay() int32 { return fnGetMinDelay(s.ptr) }
 
 // Resolution returns the sensor's resolution in the sensor's unit.
 func (s *Sensor) Resolution() float32 { return fnGetResolution(s.ptr) }
+
+// ReportingMode returns the sensor's reporting mode.
+func (s *Sensor) ReportingMode() ReportingMode { return ReportingMode(fnReportingMode(s.ptr)) }
+
+// FifoMaxEventCount returns the maximum number of events that can be batched.
+func (s *Sensor) FifoMaxEventCount() int32 { return fnFifoMax(s.ptr) }
+
+// FifoReservedEventCount returns the number of events reserved in the FIFO.
+func (s *Sensor) FifoReservedEventCount() int32 { return fnFifoReserved(s.ptr) }
+
+// Handle returns the sensor's system handle.
+func (s *Sensor) Handle() int32 { return fnGetHandle(s.ptr) }
+
+// HighestDirectReportRateLevel returns the highest direct report rate level supported.
+func (s *Sensor) HighestDirectReportRateLevel() int32 { return fnDirectRate(s.ptr) }
 
 // IsWakeUp reports whether this is a wake-up sensor.
 func (s *Sensor) IsWakeUp() bool { return fnIsWakeUpSensor(s.ptr) }

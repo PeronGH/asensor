@@ -20,8 +20,14 @@ var (
 	fnGetName        func(sensor uintptr) string                       // const char* ASensor_getName(const ASensor*)
 	fnGetVendor      func(sensor uintptr) string                       // const char* ASensor_getVendor(const ASensor*)
 	fnGetType        func(sensor uintptr) int32                        // int ASensor_getType(const ASensor*)
+	fnGetStringType  func(sensor uintptr) string                       // const char* ASensor_getStringType(const ASensor*)
 	fnGetMinDelay    func(sensor uintptr) int32                        // int ASensor_getMinDelay(const ASensor*)
 	fnGetResolution  func(sensor uintptr) float32                      // float ASensor_getResolution(const ASensor*)
+	fnReportingMode  func(sensor uintptr) int32                        // int ASensor_getReportingMode(const ASensor*)
+	fnFifoMax        func(sensor uintptr) int32                        // int ASensor_getFifoMaxEventCount(const ASensor*)
+	fnFifoReserved   func(sensor uintptr) int32                        // int ASensor_getFifoReservedEventCount(const ASensor*)
+	fnGetHandle      func(sensor uintptr) int32                        // int ASensor_getHandle(const ASensor*)
+	fnDirectRate     func(sensor uintptr) int32                        // int ASensor_getHighestDirectReportRateLevel(const ASensor*)
 	fnIsWakeUpSensor func(sensor uintptr) bool                         // bool ASensor_isWakeUpSensor(const ASensor*)
 )
 
@@ -31,12 +37,31 @@ var (
 	loadErr   error
 )
 
+// openLibandroid loads the Android system library. The system path is tried
+// first because some environments (e.g. Termux) ship a reduced libandroid.so
+// shim that shadows the real one when resolving by bare name.
+func openLibandroid() (uintptr, error) {
+	systemPath := "/system/lib/libandroid.so"
+	if unsafe.Sizeof(uintptr(0)) == 8 {
+		systemPath = "/system/lib64/libandroid.so"
+	}
+
+	var lastErr error
+	for _, path := range []string{systemPath, "libandroid.so"} {
+		handle, err := purego.Dlopen(path, purego.RTLD_NOW)
+		if err == nil {
+			return handle, nil
+		}
+		lastErr = err
+	}
+	return 0, lastErr
+}
+
 // load resolves every native symbol once and caches the result.
 func load() error {
 	loadOnce.Do(func() {
-		libHandle, loadErr = purego.Dlopen("libandroid.so", purego.RTLD_NOW)
+		libHandle, loadErr = openLibandroid()
 		if loadErr != nil {
-			loadErr = fmt.Errorf("dlopen libandroid.so: %w", loadErr)
 			return
 		}
 
@@ -49,8 +74,14 @@ func load() error {
 			{&fnGetName, "ASensor_getName"},
 			{&fnGetVendor, "ASensor_getVendor"},
 			{&fnGetType, "ASensor_getType"},
+			{&fnGetStringType, "ASensor_getStringType"},
 			{&fnGetMinDelay, "ASensor_getMinDelay"},
 			{&fnGetResolution, "ASensor_getResolution"},
+			{&fnReportingMode, "ASensor_getReportingMode"},
+			{&fnFifoMax, "ASensor_getFifoMaxEventCount"},
+			{&fnFifoReserved, "ASensor_getFifoReservedEventCount"},
+			{&fnGetHandle, "ASensor_getHandle"},
+			{&fnDirectRate, "ASensor_getHighestDirectReportRateLevel"},
 			{&fnIsWakeUpSensor, "ASensor_isWakeUpSensor"},
 		}
 
