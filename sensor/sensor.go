@@ -12,9 +12,11 @@ const (
 	Invalid                              Type = -1
 	Accelerometer                        Type = 1
 	MagneticField                        Type = 2
+	Orientation                          Type = 3
 	Gyroscope                            Type = 4
 	Light                                Type = 5
 	Pressure                             Type = 6
+	Temperature                          Type = 7
 	Proximity                            Type = 8
 	Gravity                              Type = 9
 	LinearAcceleration                   Type = 10
@@ -29,6 +31,12 @@ const (
 	StepCounter                          Type = 19
 	GeomagneticRotationVector            Type = 20
 	HeartRate                            Type = 21
+	TiltDetector                         Type = 22
+	WakeGesture                          Type = 23
+	GlanceGesture                        Type = 24
+	PickUpGesture                        Type = 25
+	WristTiltGesture                     Type = 26
+	DeviceOrientation                    Type = 27
 	Pose6dof                             Type = 28
 	StationaryDetect                     Type = 29
 	MotionDetect                         Type = 30
@@ -55,12 +63,16 @@ func (t Type) String() string {
 		return "Accelerometer"
 	case MagneticField:
 		return "MagneticField"
+	case Orientation:
+		return "Orientation"
 	case Gyroscope:
 		return "Gyroscope"
 	case Light:
 		return "Light"
 	case Pressure:
 		return "Pressure"
+	case Temperature:
+		return "Temperature"
 	case Proximity:
 		return "Proximity"
 	case Gravity:
@@ -89,6 +101,18 @@ func (t Type) String() string {
 		return "GeomagneticRotationVector"
 	case HeartRate:
 		return "HeartRate"
+	case TiltDetector:
+		return "TiltDetector"
+	case WakeGesture:
+		return "WakeGesture"
+	case GlanceGesture:
+		return "GlanceGesture"
+	case PickUpGesture:
+		return "PickUpGesture"
+	case WristTiltGesture:
+		return "WristTiltGesture"
+	case DeviceOrientation:
+		return "DeviceOrientation"
 	case Pose6dof:
 		return "Pose6dof"
 	case StationaryDetect:
