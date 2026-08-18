@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"text/tabwriter"
@@ -11,13 +12,13 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: asensor <command>")
-		fmt.Fprintln(os.Stderr, "  list    list all sensors")
+		fmt.Fprintln(os.Stderr, "  list [-verbose]    list sensors")
 		os.Exit(2)
 	}
 
 	switch os.Args[1] {
 	case "list":
-		if err := list(); err != nil {
+		if err := list(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "asensor list: %v\n", err)
 			os.Exit(1)
 		}
@@ -27,7 +28,14 @@ func main() {
 	}
 }
 
-func list() error {
+func list(args []string) error {
+	fs := flag.NewFlagSet("list", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	verbose := fs.Bool("verbose", false, "show full details for each sensor")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
 	manager, err := sensor.GetInstance()
 	if err != nil {
 		return err
@@ -36,6 +44,13 @@ func list() error {
 	sensors, err := manager.Sensors()
 	if err != nil {
 		return err
+	}
+
+	if !*verbose {
+		for i, s := range sensors {
+			fmt.Printf("%3d  %s\n", i, s.Name())
+		}
+		return nil
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
