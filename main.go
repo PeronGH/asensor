@@ -18,6 +18,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  list [-verbose]    list sensors")
 		fmt.Fprintln(os.Stderr, "  show <index>       show sensor metadata")
 		fmt.Fprintln(os.Stderr, "  read [-timeout d] <index>    read one sensor event")
+		fmt.Fprintln(os.Stderr, "  watch [-duration d] <index>  stream sensor events")
 		os.Exit(2)
 	}
 
@@ -35,6 +36,11 @@ func main() {
 	case "read":
 		if err := read(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "asensor read: %v\n", err)
+			os.Exit(1)
+		}
+	case "watch":
+		if err := watch(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "asensor watch: %v\n", err)
 			os.Exit(1)
 		}
 	default:
@@ -169,12 +175,58 @@ func read(args []string) error {
 	if ev.Type == sensor.StepCounter {
 		fmt.Fprintf(w, "Steps:\t%d\n", ev.StepCount())
 	} else {
-		n := ev.Type.ValueCount()
-		vals := make([]string, n)
-		for i := 0; i < n; i++ {
-			vals[i] = fmt.Sprintf("%g", ev.Data[i])
-		}
-		fmt.Fprintf(w, "Values:\t%s\n", strings.Join(vals, "  "))
+		fmt.Fprintf(w, "Values:\t%s\n", eventValues(ev))
 	}
 	return w.Flush()
+}
+
+// eventValues formats the meaningful float values of an event.
+func eventValues(ev *sensor.Event) string {
+	if ev.Type == sensor.StepCounter {
+		return fmt.Sprintf("steps=%d", ev.StepCount())
+	}
+	n := ev.Type.ValueCount()
+	vals := make([]string, n)
+	for i := 0; i < n; i++ {
+		vals[i] = fmt.Sprintf("%g", ev.Data[i])
+	}
+	return strings.Join(vals, " ")
+}
+
+func watch(args []string) error {
+	fs := flag.NewFlagSet("watch", flag.ExitOnError)
+	fs.SetOutput(os.Stderr)
+	duration := fs.Duration("duration", 10*time.Second, "how long to stream events")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: asensor watch [-duration duration] <index>")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if fs.NArg() != 1 {
+		return fmt.Errorf("expected exactly one sensor index, got %d", fs.NArg())
+	}
+	index, err := strconv.Atoi(fs.Arg(0))
+	if err != nil {
+		return fmt.Errorf("invalid index %q: %w", fs.Arg(0), err)
+	}
+
+	manager, err := sensor.GetInstance()
+	if err != nil {
+		return err
+	}
+	sensors, err := manager.Sensors()
+	if err != nil {
+		return err
+	}
+	if index < 0 || index >= len(sensors) {
+		return fmt.Errorf("index %d out of range (0-%d)", index, len(sensors)-1)
+	}
+	s := sensors[index]
+
+	fmt.Printf("# %s\n", s.Name())
+	fmt.Printf("# ts_ms values\n")
+	return manager.Watch(s, *duration, func(ev *sensor.Event) {
+		fmt.Printf("%d  %s\n", ev.Timestamp/1_000_000, eventValues(ev))
+	})
 }

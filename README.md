@@ -29,6 +29,9 @@ asensor read 0
 
 # Longer timeout for sensors that only fire on real-world events
 asensor read -timeout 30s 40
+
+# Stream events for 10 seconds (e.g. watch the flicker sensor)
+asensor watch -duration 10s 31
 ```
 
 Indices come from `asensor list` and are zero-based.

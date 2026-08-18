@@ -234,57 +234,100 @@ func (m *Manager) Sensors() ([]*Sensor, error) {
 	return sensors, nil
 }
 
-// Read enables the sensor, waits for a single event, and disables it again.
-func (m *Manager) Read(s *Sensor, timeout time.Duration) (*Event, error) {
+// startQueue prepares a looper, creates an event queue, and enables s on it.
+// The returned cleanup disables the sensor and releases the queue and looper.
+func (m *Manager) startQueue(s *Sensor) (uintptr, func(), error) {
 	looper := fnALooperPrepare(1) // ALOOPER_PREPARE_ALLOW_NON_CALLBACKS
 	if looper == 0 {
-		return nil, fmt.Errorf("ALooper_prepare returned NULL")
+		return 0, nil, fmt.Errorf("ALooper_prepare returned NULL")
 	}
-	defer fnALooperRelease(looper)
 
 	queue := fnCreateEventQueue(m.ptr, looper, 0, 0, 0)
 	if queue == 0 {
-		return nil, fmt.Errorf("ASensorManager_createEventQueue returned NULL")
+		fnALooperRelease(looper)
+		return 0, nil, fmt.Errorf("ASensorManager_createEventQueue returned NULL")
 	}
-	defer fnDestroyEventQueue(m.ptr, queue)
 
 	if rc := fnEnableSensor(queue, s.ptr); rc != 0 {
-		return nil, fmt.Errorf("enable %s: ASensorEventQueue_enableSensor returned %d", s.Name(), rc)
+		fnDestroyEventQueue(m.ptr, queue)
+		fnALooperRelease(looper)
+		return 0, nil, fmt.Errorf("enable %s: ASensorEventQueue_enableSensor returned %d", s.Name(), rc)
 	}
-	defer fnDisableSensor(queue, s.ptr)
 
-	deadline := time.Now().Add(timeout)
+	cleanup := func() {
+		fnDisableSensor(queue, s.ptr)
+		fnDestroyEventQueue(m.ptr, queue)
+		fnALooperRelease(looper)
+	}
+	return queue, cleanup, nil
+}
+
+// pollEvent waits until deadline for a single event. ok is false when the
+// deadline passes without an event.
+func pollEvent(queue uintptr, deadline time.Time) (*Event, bool, error) {
 	var raw cEvent
 	for {
 		rc := fnHasEvents(queue)
 		if rc == 1 {
 			n := fnGetEvents(queue, &raw, 1)
 			if n == 1 {
-				break
+				return &Event{Sensor: raw.Sensor, Type: Type(raw.Type), Timestamp: raw.Timestamp, Data: raw.Data}, true, nil
 			}
 			if n < 0 {
-				return nil, fmt.Errorf("ASensorEventQueue_getEvents returned %d", n)
+				return nil, false, fmt.Errorf("ASensorEventQueue_getEvents returned %d", n)
 			}
 			// n == 0: readiness was spurious, keep waiting.
 		} else if rc < -1 && rc != -4 {
 			// The NDK implementation returns -1 (not 0) when no event is
 			// pending, and a value < -1 for a real error. -4 is EINTR,
 			// which the Go runtime can trigger; treat it as transient.
-			return nil, fmt.Errorf("ASensorEventQueue_hasEvents returned %d", rc)
+			return nil, false, fmt.Errorf("ASensorEventQueue_hasEvents returned %d", rc)
 		}
 
 		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("no event within %s", timeout)
+			return nil, false, nil
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
 
-	return &Event{
-		Sensor:    raw.Sensor,
-		Type:      Type(raw.Type),
-		Timestamp: raw.Timestamp,
-		Data:      raw.Data,
-	}, nil
+// Read enables the sensor, waits for a single event, and disables it again.
+func (m *Manager) Read(s *Sensor, timeout time.Duration) (*Event, error) {
+	queue, cleanup, err := m.startQueue(s)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	ev, ok, err := pollEvent(queue, time.Now().Add(timeout))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("no event within %s", timeout)
+	}
+	return ev, nil
+}
+
+// Watch enables the sensor and streams events to fn until duration elapses.
+func (m *Manager) Watch(s *Sensor, duration time.Duration, fn func(*Event)) error {
+	queue, cleanup, err := m.startQueue(s)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	deadline := time.Now().Add(duration)
+	for {
+		ev, ok, err := pollEvent(queue, deadline)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+		fn(ev)
+	}
 }
 
 // Sensor wraps a native ASensor handle.
