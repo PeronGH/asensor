@@ -2,6 +2,7 @@ package sensor
 
 import (
 	"fmt"
+	"time"
 	"unsafe"
 )
 
@@ -148,6 +149,30 @@ func (t Type) String() string {
 	}
 }
 
+// ValueCount returns how many leading floats of an event's data are
+// meaningful for this sensor type.
+func (t Type) ValueCount() int {
+	switch t {
+	case Light, Pressure, Proximity, RelativeHumidity, AmbientTemperature, Temperature,
+		HeartRate, HeartBeat, SignificantMotion, StepDetector, StepCounter,
+		StationaryDetect, MotionDetect, TiltDetector, WakeGesture, GlanceGesture,
+		PickUpGesture, WristTiltGesture, DeviceOrientation, HingeAngle,
+		LowLatencyOffbodyDetect:
+		return 1
+	case MagneticFieldUncalibrated, GyroscopeUncalibrated, AccelerometerUncalibrated,
+		AccelerometerLimitedAxes, GyroscopeLimitedAxes:
+		return 6
+	case AccelerometerLimitedAxesUncalibrated, GyroscopeLimitedAxesUncalibrated:
+		return 9
+	case RotationVector, GameRotationVector, GeomagneticRotationVector:
+		return 4
+	case Heading:
+		return 2
+	default:
+		return 3
+	}
+}
+
 // ReportingMode is a sensor's reporting mode as returned by ASensor_getReportingMode.
 type ReportingMode int32
 
@@ -209,6 +234,59 @@ func (m *Manager) Sensors() ([]*Sensor, error) {
 	return sensors, nil
 }
 
+// Read enables the sensor, waits for a single event, and disables it again.
+func (m *Manager) Read(s *Sensor, timeout time.Duration) (*Event, error) {
+	looper := fnALooperPrepare(1) // ALOOPER_PREPARE_ALLOW_NON_CALLBACKS
+	if looper == 0 {
+		return nil, fmt.Errorf("ALooper_prepare returned NULL")
+	}
+	defer fnALooperRelease(looper)
+
+	queue := fnCreateEventQueue(m.ptr, looper, 0, 0, 0)
+	if queue == 0 {
+		return nil, fmt.Errorf("ASensorManager_createEventQueue returned NULL")
+	}
+	defer fnDestroyEventQueue(m.ptr, queue)
+
+	if rc := fnEnableSensor(queue, s.ptr); rc != 0 {
+		return nil, fmt.Errorf("enable %s: ASensorEventQueue_enableSensor returned %d", s.Name(), rc)
+	}
+	defer fnDisableSensor(queue, s.ptr)
+
+	deadline := time.Now().Add(timeout)
+	var raw cEvent
+	for {
+		rc := fnHasEvents(queue)
+		if rc == 1 {
+			n := fnGetEvents(queue, &raw, 1)
+			if n == 1 {
+				break
+			}
+			if n < 0 {
+				return nil, fmt.Errorf("ASensorEventQueue_getEvents returned %d", n)
+			}
+			// n == 0: readiness was spurious, keep waiting.
+		} else if rc < -1 && rc != -4 {
+			// The NDK implementation returns -1 (not 0) when no event is
+			// pending, and a value < -1 for a real error. -4 is EINTR,
+			// which the Go runtime can trigger; treat it as transient.
+			return nil, fmt.Errorf("ASensorEventQueue_hasEvents returned %d", rc)
+		}
+
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("no event within %s", timeout)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	return &Event{
+		Sensor:    raw.Sensor,
+		Type:      Type(raw.Type),
+		Timestamp: raw.Timestamp,
+		Data:      raw.Data,
+	}, nil
+}
+
 // Sensor wraps a native ASensor handle.
 type Sensor struct {
 	ptr uintptr
@@ -249,3 +327,16 @@ func (s *Sensor) HighestDirectReportRateLevel() int32 { return fnDirectRate(s.pt
 
 // IsWakeUp reports whether this is a wake-up sensor.
 func (s *Sensor) IsWakeUp() bool { return fnIsWakeUpSensor(s.ptr) }
+
+// Event is a single sensor reading.
+type Event struct {
+	Sensor    int32
+	Type      Type
+	Timestamp int64 // elapsed realtime nanoseconds
+	Data      [16]float32
+}
+
+// StepCount returns the step counter value for a step counter event.
+func (e *Event) StepCount() uint64 {
+	return *(*uint64)(unsafe.Pointer(&e.Data[0]))
+}

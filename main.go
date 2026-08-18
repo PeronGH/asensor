@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/PeronGH/asensor/sensor"
 )
@@ -15,6 +17,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: asensor <command>")
 		fmt.Fprintln(os.Stderr, "  list [-verbose]    list sensors")
 		fmt.Fprintln(os.Stderr, "  show <index>       show sensor metadata")
+		fmt.Fprintln(os.Stderr, "  read [-timeout d] <index>    read one sensor event")
 		os.Exit(2)
 	}
 
@@ -27,6 +30,11 @@ func main() {
 	case "show":
 		if err := show(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "asensor show: %v\n", err)
+			os.Exit(1)
+		}
+	case "read":
+		if err := read(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "asensor read: %v\n", err)
 			os.Exit(1)
 		}
 	default:
@@ -116,5 +124,57 @@ func show(args []string) error {
 	fmt.Fprintf(w, "FIFO reserved:\t%d\n", s.FifoReservedEventCount())
 	fmt.Fprintf(w, "Handle:\t%d\n", s.Handle())
 	fmt.Fprintf(w, "DirectRate:\t%d\n", s.HighestDirectReportRateLevel())
+	return w.Flush()
+}
+
+func read(args []string) error {
+	fs := flag.NewFlagSet("read", flag.ExitOnError)
+	fs.SetOutput(os.Stderr)
+	timeout := fs.Duration("timeout", 5*time.Second, "how long to wait for an event")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, "usage: asensor read [-timeout duration] <index>")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	if fs.NArg() != 1 {
+		return fmt.Errorf("expected exactly one sensor index, got %d", fs.NArg())
+	}
+	index, err := strconv.Atoi(fs.Arg(0))
+	if err != nil {
+		return fmt.Errorf("invalid index %q: %w", fs.Arg(0), err)
+	}
+
+	manager, err := sensor.GetInstance()
+	if err != nil {
+		return err
+	}
+	sensors, err := manager.Sensors()
+	if err != nil {
+		return err
+	}
+	if index < 0 || index >= len(sensors) {
+		return fmt.Errorf("index %d out of range (0-%d)", index, len(sensors)-1)
+	}
+	s := sensors[index]
+
+	ev, err := manager.Read(s, *timeout)
+	if err != nil {
+		return err
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "Sensor:\t%s\n", s.Name())
+	fmt.Fprintf(w, "Timestamp:\t%d ms\n", ev.Timestamp/1_000_000)
+	if ev.Type == sensor.StepCounter {
+		fmt.Fprintf(w, "Steps:\t%d\n", ev.StepCount())
+	} else {
+		n := ev.Type.ValueCount()
+		vals := make([]string, n)
+		for i := 0; i < n; i++ {
+			vals[i] = fmt.Sprintf("%g", ev.Data[i])
+		}
+		fmt.Fprintf(w, "Values:\t%s\n", strings.Join(vals, "  "))
+	}
 	return w.Flush()
 }

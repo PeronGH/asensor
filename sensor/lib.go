@@ -29,7 +29,29 @@ var (
 	fnGetHandle      func(sensor uintptr) int32                        // int ASensor_getHandle(const ASensor*)
 	fnDirectRate     func(sensor uintptr) int32                        // int ASensor_getHighestDirectReportRateLevel(const ASensor*)
 	fnIsWakeUpSensor func(sensor uintptr) bool                         // bool ASensor_isWakeUpSensor(const ASensor*)
+
+	fnCreateEventQueue  func(manager, looper uintptr, ident int32, callback, data uintptr) uintptr // ASensorEventQueue* ASensorManager_createEventQueue(...)
+	fnDestroyEventQueue func(manager, queue uintptr) int32                                         // int ASensorManager_destroyEventQueue(...)
+	fnEnableSensor      func(queue, sensor uintptr) int32                                          // int ASensorEventQueue_enableSensor(...)
+	fnDisableSensor     func(queue, sensor uintptr) int32                                          // int ASensorEventQueue_disableSensor(...)
+	fnHasEvents         func(queue uintptr) int32                                                  // int ASensorEventQueue_hasEvents(...)
+	fnGetEvents         func(queue uintptr, events *cEvent, count uintptr) int64                   // ssize_t ASensorEventQueue_getEvents(...)
+
+	fnALooperPrepare func(opts int32) uintptr // ALooper* ALooper_prepare(int opts)
+	fnALooperRelease func(looper uintptr)     // void ALooper_release(ALooper* looper)
 )
+
+// cEvent mirrors the C ASensorEvent struct (arm64 layout, 104 bytes).
+type cEvent struct {
+	Version   int32
+	Sensor    int32
+	Type      int32
+	Reserved0 int32
+	Timestamp int64
+	Data      [16]float32
+	Flags     uint32
+	Reserved1 [3]int32
+}
 
 var (
 	libHandle uintptr
@@ -83,6 +105,14 @@ func load() error {
 			{&fnGetHandle, "ASensor_getHandle"},
 			{&fnDirectRate, "ASensor_getHighestDirectReportRateLevel"},
 			{&fnIsWakeUpSensor, "ASensor_isWakeUpSensor"},
+			{&fnCreateEventQueue, "ASensorManager_createEventQueue"},
+			{&fnDestroyEventQueue, "ASensorManager_destroyEventQueue"},
+			{&fnEnableSensor, "ASensorEventQueue_enableSensor"},
+			{&fnDisableSensor, "ASensorEventQueue_disableSensor"},
+			{&fnHasEvents, "ASensorEventQueue_hasEvents"},
+			{&fnGetEvents, "ASensorEventQueue_getEvents"},
+			{&fnALooperPrepare, "ALooper_prepare"},
+			{&fnALooperRelease, "ALooper_release"},
 		}
 
 		for _, b := range bindings {
