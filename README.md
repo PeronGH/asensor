@@ -28,7 +28,10 @@ asensor read 0
 # Longer timeout for sensors that only fire on real-world events
 asensor read -timeout 30s 40
 
-# Stream events for 10 seconds (e.g. watch the flicker sensor)
+# Stream indefinitely (default; stop with Ctrl+C)
+asensor watch 31
+
+# Stream for a limited time (e.g. watch the flicker sensor)
 asensor watch -duration 10s 31
 ```
 

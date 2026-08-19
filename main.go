@@ -196,7 +196,7 @@ func eventValues(ev *sensor.Event) string {
 func watch(args []string) error {
 	fs := flag.NewFlagSet("watch", flag.ExitOnError)
 	fs.SetOutput(os.Stderr)
-	duration := fs.Duration("duration", 10*time.Second, "how long to stream events")
+	duration := fs.Duration("duration", 0, "how long to stream events (0 = unlimited)")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: asensor watch [-duration duration] <index>")
 		fs.PrintDefaults()

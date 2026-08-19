@@ -262,8 +262,8 @@ func (m *Manager) startQueue(s *Sensor) (uintptr, func(), error) {
 	return queue, cleanup, nil
 }
 
-// pollEvent waits until deadline for a single event. ok is false when the
-// deadline passes without an event.
+// pollEvent waits until deadline for a single event. A zero deadline means
+// wait forever. ok is false when the deadline passes without an event.
 func pollEvent(queue uintptr, deadline time.Time) (*Event, bool, error) {
 	var raw cEvent
 	for {
@@ -284,7 +284,7 @@ func pollEvent(queue uintptr, deadline time.Time) (*Event, bool, error) {
 			return nil, false, fmt.Errorf("ASensorEventQueue_hasEvents returned %d", rc)
 		}
 
-		if time.Now().After(deadline) {
+		if !deadline.IsZero() && time.Now().After(deadline) {
 			return nil, false, nil
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -310,6 +310,7 @@ func (m *Manager) Read(s *Sensor, timeout time.Duration) (*Event, error) {
 }
 
 // Watch enables the sensor and streams events to fn until duration elapses.
+// A non-positive duration streams indefinitely.
 func (m *Manager) Watch(s *Sensor, duration time.Duration, fn func(*Event)) error {
 	queue, cleanup, err := m.startQueue(s)
 	if err != nil {
@@ -317,7 +318,10 @@ func (m *Manager) Watch(s *Sensor, duration time.Duration, fn func(*Event)) erro
 	}
 	defer cleanup()
 
-	deadline := time.Now().Add(duration)
+	var deadline time.Time
+	if duration > 0 {
+		deadline = time.Now().Add(duration)
+	}
 	for {
 		ev, ok, err := pollEvent(queue, deadline)
 		if err != nil {
