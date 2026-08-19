@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
-	"time"
 
 	"github.com/PeronGH/asensor/sensor"
 )
@@ -136,7 +135,7 @@ func show(args []string) error {
 func read(args []string) error {
 	fs := flag.NewFlagSet("read", flag.ExitOnError)
 	fs.SetOutput(os.Stderr)
-	timeout := fs.Duration("timeout", 5*time.Second, "how long to wait for an event")
+	timeout := fs.Duration("timeout", 0, "how long to wait for an event (0 = wait forever)")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "usage: asensor read [-timeout duration] <index>")
 		fs.PrintDefaults()

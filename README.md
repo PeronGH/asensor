@@ -22,10 +22,10 @@ asensor list -verbose
 # Metadata for one sensor
 asensor show 0
 
-# Read one event from a sensor (5s default timeout)
+# Read one event (waits forever by default; stop with Ctrl+C)
 asensor read 0
 
-# Longer timeout for sensors that only fire on real-world events
+# Or wait a limited time for sensors that fire only on real-world events
 asensor read -timeout 30s 40
 
 # Stream indefinitely (default; stop with Ctrl+C)

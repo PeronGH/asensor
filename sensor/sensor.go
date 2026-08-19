@@ -316,6 +316,7 @@ func pollEvent(queue uintptr, deadline time.Time) (*Event, bool, error) {
 }
 
 // Read enables the sensor, waits for a single event, and disables it again.
+// A non-positive timeout waits forever.
 func (m *Manager) Read(s *Sensor, timeout time.Duration) (*Event, error) {
 	queue, cleanup, err := m.startQueue(s)
 	if err != nil {
@@ -323,7 +324,11 @@ func (m *Manager) Read(s *Sensor, timeout time.Duration) (*Event, error) {
 	}
 	defer cleanup()
 
-	ev, ok, err := pollEvent(queue, time.Now().Add(timeout))
+	var deadline time.Time
+	if timeout > 0 {
+		deadline = time.Now().Add(timeout)
+	}
+	ev, ok, err := pollEvent(queue, deadline)
 	if err != nil {
 		return nil, err
 	}
