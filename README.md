@@ -2,12 +2,20 @@
 
 Inspect Android sensors from the command line. Lists available sensors, shows their static metadata, and reads a single event from any of them.
 
-Works on Android (including Termux). Uses `purego` to call `libandroid.so` at runtime, so no cgo toolchain is needed.
+Works on Android (including Termux). Uses `purego` to call `libandroid.so` at runtime.
+
+## Quick start
+
+Run directly from GitHub without installing:
+
+```sh
+go run github.com/PeronGH/asensor@latest list
+```
 
 ## Build
 
 ```sh
-go build -o asensor .
+GOOS=android GOARCH=arm64 go build -o asensor .
 ```
 
 ## Usage
