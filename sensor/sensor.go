@@ -2,6 +2,7 @@ package sensor
 
 import (
 	"fmt"
+	"runtime"
 	"time"
 	"unsafe"
 )
@@ -234,23 +235,30 @@ func (m *Manager) Sensors() ([]*Sensor, error) {
 	return sensors, nil
 }
 
-// startQueue prepares a looper, creates an event queue, and enables s on it.
-// The returned cleanup disables the sensor and releases the queue and looper.
+// startQueue pins the goroutine to its OS thread (the Android looper is
+// thread-local), prepares a looper, creates an event queue, and enables s on
+// it. The returned cleanup disables the sensor, releases the queue and
+// looper, and unpins the thread.
 func (m *Manager) startQueue(s *Sensor) (uintptr, func(), error) {
+	runtime.LockOSThread()
+
 	looper := fnALooperPrepare(1) // ALOOPER_PREPARE_ALLOW_NON_CALLBACKS
 	if looper == 0 {
+		runtime.UnlockOSThread()
 		return 0, nil, fmt.Errorf("ALooper_prepare returned NULL")
 	}
 
 	queue := fnCreateEventQueue(m.ptr, looper, 0, 0, 0)
 	if queue == 0 {
 		fnALooperRelease(looper)
+		runtime.UnlockOSThread()
 		return 0, nil, fmt.Errorf("ASensorManager_createEventQueue returned NULL")
 	}
 
 	if rc := fnEnableSensor(queue, s.ptr); rc != 0 {
 		fnDestroyEventQueue(m.ptr, queue)
 		fnALooperRelease(looper)
+		runtime.UnlockOSThread()
 		return 0, nil, fmt.Errorf("enable %s: ASensorEventQueue_enableSensor returned %d", s.Name(), rc)
 	}
 
@@ -258,12 +266,14 @@ func (m *Manager) startQueue(s *Sensor) (uintptr, func(), error) {
 		fnDisableSensor(queue, s.ptr)
 		fnDestroyEventQueue(m.ptr, queue)
 		fnALooperRelease(looper)
+		runtime.UnlockOSThread()
 	}
 	return queue, cleanup, nil
 }
 
-// pollEvent waits until deadline for a single event. A zero deadline means
-// wait forever. ok is false when the deadline passes without an event.
+// pollEvent blocks on the looper until deadline for a single event. A zero
+// deadline means wait forever. ok is false when the deadline passes without
+// an event.
 func pollEvent(queue uintptr, deadline time.Time) (*Event, bool, error) {
 	var raw cEvent
 	for {
@@ -284,10 +294,24 @@ func pollEvent(queue uintptr, deadline time.Time) (*Event, bool, error) {
 			return nil, false, fmt.Errorf("ASensorEventQueue_hasEvents returned %d", rc)
 		}
 
-		if !deadline.IsZero() && time.Now().After(deadline) {
-			return nil, false, nil
+		// Block until an event is ready or the deadline passes.
+		timeoutMillis := int32(-1) // wait indefinitely
+		if !deadline.IsZero() {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return nil, false, nil
+			}
+			// Round up so the poll never wakes before the deadline.
+			timeoutMillis = int32((remaining + time.Millisecond - 1) / time.Millisecond)
 		}
-		time.Sleep(10 * time.Millisecond)
+
+		if rc := fnALooperPollOnce(timeoutMillis, 0, 0, 0); rc == -4 {
+			// ALOOPER_POLL_ERROR: the calling thread has no looper or an
+			// unrecoverable error occurred.
+			return nil, false, fmt.Errorf("ALooper_pollOnce returned %d", rc)
+		}
+		// -1 (wake), -2 (callback), -3 (timeout), or an ident (event ready)
+		// all loop around to drain the queue and re-check the deadline.
 	}
 }
 

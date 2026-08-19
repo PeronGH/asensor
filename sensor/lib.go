@@ -37,8 +37,9 @@ var (
 	fnHasEvents         func(queue uintptr) int32                                                  // int ASensorEventQueue_hasEvents(...)
 	fnGetEvents         func(queue uintptr, events *cEvent, count uintptr) int64                   // ssize_t ASensorEventQueue_getEvents(...)
 
-	fnALooperPrepare func(opts int32) uintptr // ALooper* ALooper_prepare(int opts)
-	fnALooperRelease func(looper uintptr)     // void ALooper_release(ALooper* looper)
+	fnALooperPollOnce func(timeoutMillis int32, outFd, outEvents, outData uintptr) int32 // int ALooper_pollOnce(int timeoutMillis, int*, int*, void**)
+	fnALooperPrepare  func(opts int32) uintptr                                           // ALooper* ALooper_prepare(int opts)
+	fnALooperRelease  func(looper uintptr)                                               // void ALooper_release(ALooper* looper)
 )
 
 // cEvent mirrors the C ASensorEvent struct (arm64 layout, 104 bytes).
@@ -111,6 +112,7 @@ func load() error {
 			{&fnDisableSensor, "ASensorEventQueue_disableSensor"},
 			{&fnHasEvents, "ASensorEventQueue_hasEvents"},
 			{&fnGetEvents, "ASensorEventQueue_getEvents"},
+			{&fnALooperPollOnce, "ALooper_pollOnce"},
 			{&fnALooperPrepare, "ALooper_prepare"},
 			{&fnALooperRelease, "ALooper_release"},
 		}
